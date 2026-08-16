@@ -117,6 +117,7 @@ fn signal(system: &mut System, pid: Pid, signal: Signal) -> bool {
 }
 
 #[cfg(test)]
+#[expect(clippy::expect_used, reason = "panic helpers are idiomatic in tests")]
 mod tests {
     use super::*;
     use crate::identity::{Compat, Identity, Run};
@@ -125,12 +126,36 @@ mod tests {
         Record::new(Identity::new(Run::from_raw(1), Compat::from_raw(1)), tenant)
     }
 
+    /// A pid that is genuinely not running: start a process, wait for it, and
+    /// close its handle.
+    ///
+    /// Guessing at an impossible pid does not work — pid 0 is the System Idle
+    /// Process on Windows and is visible to a process lookup, so a record
+    /// naming it takes the comparison path instead of the "already gone" one.
+    fn a_reaped_pid() -> u32 {
+        // `--list` makes the test binary print its test names and exit, which
+        // needs no platform-specific command.
+        let mut child = std::process::Command::new(
+            std::env::current_exe().expect("the test binary's own path"),
+        )
+        .arg("--list")
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .spawn()
+        .expect("spawning the test binary");
+        let pid = child.id();
+        child.wait().expect("waiting for the child");
+        // Windows keeps a terminated process visible while a handle to it is
+        // open, and `Child` holds one until it is dropped.
+        drop(child);
+        pid
+    }
+
     #[test]
     fn a_pid_that_is_gone_needs_no_signal() {
-        // Pid 0 is never an ordinary process on any supported platform.
         let outcome = evict(
             &record(Tenant {
-                pid: 0,
+                pid: a_reaped_pid(),
                 started_at: Some(1),
                 image: None,
             }),
