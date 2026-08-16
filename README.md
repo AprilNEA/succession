@@ -61,12 +61,21 @@ match verdict(&role.occupancy()?, Run::mint(), Duration::ZERO, Duration::from_se
 # Ok::<(), std::io::Error>(())
 ```
 
-## What it does not do
+## Features
 
-No dependencies, and no liberties: it does not spawn, signal, or exit, it does
-not resolve paths, and it does not schedule retries. Process supervision with
-restart policies and containment is [`processkit`](https://docs.rs/processkit)'s
-job; this crate is the decision layer — who is in the seat, and may I have it.
+The default build decides and nothing else: no dependencies, and it never
+spawns, signals, exits, or resolves a path. Each feature adds one piece of
+glue, so a process that only needs the decision pays for nothing else.
+
+| Feature | Adds | Dependency |
+|---|---|---|
+| `serde` | Serialization for the identity types, for carrying `Identity` on your own wire | `serde` |
+| `sysinfo` | `Tenant::look_up`, so live process facts need not be supplied by hand | `sysinfo` |
+| `evict` | `evict`, which verifies a pid against the record before signalling it, escalates on a deadline, and waits for the role to be released | `sysinfo` |
+| `supervise` | `Supervisor`, a probe/spawn/wait/back-off loop over the verdict, reporting events rather than logging them | none |
+
+Whole-process-tree containment and async supervision stay out of scope;
+[`processkit`](https://docs.rs/processkit) does those well.
 
 ## License
 

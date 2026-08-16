@@ -11,7 +11,28 @@ readme = "README.md"
 keywords = ["single-instance", "process", "lock", "orphan", "supervisor"]
 categories = ["os", "filesystem"]
 
+[features]
+default = []
+# Serialize the identity types, for an application that carries `Identity` on
+# its own wire rather than only in the claim record.
+serde = ["dep:serde"]
+# Look live process facts up instead of making the caller supply them.
+sysinfo = ["dep:sysinfo"]
+# Terminate a superseded tenant, refusing to signal a pid that no longer
+# belongs to the process the record describes.
+evict = ["sysinfo"]
+# A supervision loop over the verdict: probe, spawn, wait, back off. std only.
+supervise = []
+
 [dependencies]
+serde = { version = "1", features = ["derive"], optional = true }
+sysinfo = { version = "0.38", default-features = false, features = [
+    "system",
+], optional = true }
+
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["--cfg", "docsrs"]
 
 [lints.rust]
 missing_docs = "deny"

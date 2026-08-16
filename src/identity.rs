@@ -5,20 +5,18 @@ use std::sync::OnceLock;
 
 /// One run of an owner process.
 ///
-/// Equality means "the same process instance", which is the fact a subordinate
-/// helper needs and cannot get from a version number: an owner that restarts
-/// without changing its build reports the same version and a different run.
+/// Equality means "the same process instance" — the fact a version number
+/// cannot carry, since a restart of the same build reports the same version.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Run(u64);
 
 impl Run {
     /// Draw this process's run token, stable for the rest of its life.
     ///
     /// Drawn from the OS-seeded hasher state the standard library uses for
-    /// `HashMap`, so two processes practically never agree. It is not
-    /// cryptographic and carries no ordering: the only property required is
-    /// that a later run differs from an earlier one, which rules out a pid
-    /// (reused) and a start timestamp (a clock can step backwards).
+    /// `HashMap`; not cryptographic. Only inequality between runs is required,
+    /// which rules out a pid (reused) and a timestamp (clocks step backwards).
     #[must_use]
     pub fn mint() -> Self {
         static MINE: OnceLock<u64> = OnceLock::new();
@@ -38,13 +36,13 @@ impl Run {
     }
 }
 
-/// What an owner and a helper must agree on before they can serve each other:
-/// a protocol version, an ABI revision, a build fingerprint — whatever the
-/// application bumps when the two sides stop understanding one another.
+/// What an owner and a helper must agree on to serve each other: a protocol
+/// version, an ABI revision, a build fingerprint.
 ///
-/// A helper that sees a different value is not out of date by chance; it is
-/// from an install that has been replaced.
+/// A helper seeing a different value is not out of date by chance; it is from
+/// an install that has been replaced.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Compat(u64);
 
 impl Compat {
@@ -75,20 +73,11 @@ impl From<u32> for Compat {
 
 /// Identity of one run of an owner process.
 ///
-/// # The readability contract
-///
-/// A helper decides whether to stay by comparing this identity, so it has to
-/// be able to *read* the identity of an owner it may be incompatible with.
-/// Whatever channel carries [`Compat`] must therefore be frozen: readable by
-/// every past and future build, never extended. In a request/response protocol
-/// that usually means a dedicated method whose position and encoding never
-/// change; [`Run`] may then be read through any channel, because it is only
-/// consulted once the two `Compat` values agree.
-///
-/// Getting this backwards — putting the version inside a payload whose shape
-/// changes with the version — is what makes an obsolete helper unable to learn
-/// that it is obsolete.
+/// [`Compat`] has to be readable by a helper that may be incompatible, so it
+/// needs a channel frozen across versions; [`Run`] is only consulted once the
+/// two fingerprints agree. See the crate docs.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Identity {
     /// Which run of the owner.
     pub run: Run,

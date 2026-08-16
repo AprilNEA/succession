@@ -9,35 +9,59 @@ use crate::identity::{Compat, Identity, Run};
 /// The OS-level handle to a process filling a role.
 ///
 /// `pid` alone cannot identify a process — the OS reuses pids — so a tenant
-/// records whatever corroborating facts it has. Each of them is optional
-/// because not every caller can obtain them without a process-inspection
-/// dependency; supplying them is what lets an evictor prove it is signalling
-/// the process it read about. See [`Tenant::compare`].
+/// records whatever corroborating facts it has. They are optional because not
+/// every caller can obtain them; supplying them is what lets an evictor prove
+/// it is signalling the process it read about. See [`Tenant::compare`].
 #[derive(Clone, Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Tenant {
     /// Process id.
     pub pid: u32,
-    /// Process start time, in whatever unit the caller's process-inspection
-    /// source reports. Compared for equality only, so the unit only has to be
-    /// consistent within one application.
+    /// Process start time, in whatever unit the caller's source reports.
+    /// Compared for equality only, so the unit need only be consistent within
+    /// one application.
     pub started_at: Option<u64>,
     /// Executable image behind the process.
     pub image: Option<PathBuf>,
 }
 
 impl Tenant {
-    /// This process, described with what the standard library can see: its pid
-    /// and its executable path.
+    /// This process.
     ///
-    /// Add [`Tenant::started`] when a process-inspection source is available —
-    /// without it an evictor can only reach [`Sameness::Inconclusive`].
+    /// With the `sysinfo` feature this includes the start time; without it,
+    /// only what the standard library can see — the pid and the executable
+    /// path — which leaves an evictor at [`Sameness::Inconclusive`].
     #[must_use]
     pub fn current() -> Self {
+        #[cfg(feature = "sysinfo")]
+        if let Some(detailed) = Self::look_up(std::process::id()) {
+            return detailed;
+        }
         Self {
             pid: std::process::id(),
             started_at: None,
             image: std::env::current_exe().ok(),
         }
+    }
+
+    /// The live facts for `pid`, or `None` if no such process is running.
+    ///
+    /// The lookup an evictor needs before it signals anyone: pass the result
+    /// to [`Tenant::compare`] against the record.
+    #[cfg(feature = "sysinfo")]
+    #[must_use]
+    pub fn look_up(pid: u32) -> Option<Self> {
+        use sysinfo::{Pid, ProcessesToUpdate, System};
+
+        let pid = Pid::from_u32(pid);
+        let mut system = System::new();
+        system.refresh_processes(ProcessesToUpdate::Some(&[pid]), true);
+        let process = system.process(pid)?;
+        Some(Self {
+            pid: process.pid().as_u32(),
+            started_at: Some(process.start_time()),
+            image: process.exe().map(Path::to_path_buf),
+        })
     }
 
     /// Add the process start time an inspection source reported.
@@ -50,8 +74,8 @@ impl Tenant {
     /// Whether `live` — the facts just looked up for this record's pid — is
     /// still the process that wrote the record.
     ///
-    /// Call this before signalling anyone. A record can outlive its writer,
-    /// and the pid it names may since belong to something unrelated.
+    /// Call this before signalling anyone: a record can outlive its writer, and
+    /// its pid may since belong to something unrelated.
     #[must_use]
     pub fn compare(&self, live: &Self) -> Sameness {
         if self.pid != live.pid {
@@ -87,27 +111,24 @@ impl Corroboration {
 }
 
 /// Whether a live process is the one a record describes.
-///
-/// [`Sameness::Inconclusive`] is not a soft "probably": it means the record
-/// carried nothing beyond a pid, so the answer is unknown. Treat it as a
-/// reason to be careful — logging it, or refusing to escalate past a polite
-/// signal — rather than as a yes.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum Sameness {
-    /// Corroborated: same pid, and every fact both sides know agrees.
+    /// Same pid, and every fact both sides know agrees.
     Same,
-    /// Refuted: a different pid, or a fact that disagrees.
+    /// A different pid, or a fact that disagrees.
     Different,
-    /// Only the pid was available to compare.
+    /// Only the pid was available to compare. Not a soft "probably" — the
+    /// answer is unknown, which is a reason to refuse to escalate.
     Inconclusive,
 }
 
 /// What a tenant publishes about itself while it holds a role.
 ///
-/// The record is advisory. The lock is what proves a tenant is alive; this is
-/// what lets an onlooker say *which* tenant, and therefore whether it belongs
-/// to the current run of the owner.
+/// Advisory: the lock proves a tenant is alive, the record says *which* tenant,
+/// and therefore whether it belongs to the current run of the owner.
 #[derive(Clone, Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Record {
     /// The owner run this tenant serves.
     pub identity: Identity,
@@ -115,8 +136,7 @@ pub struct Record {
     pub tenant: Tenant,
 }
 
-/// Marker line written first so a human reading the file — or a future parser
-/// — can tell what it is looking at.
+/// Marker line, so a person — or a future parser — can tell what the file is.
 const HEADER: &str = "# succession 1";
 
 impl Record {
@@ -126,12 +146,8 @@ impl Record {
         Self { identity, tenant }
     }
 
-    /// Render the record in the on-disk format.
-    ///
-    /// Deliberately a boring `key = value` text file: it has to be readable by
-    /// every past and future build of every process in the tree, and by a
-    /// person debugging at 2am. Readers ignore keys they do not know, so new
-    /// facts can be added without a format version.
+    /// Render the record in the on-disk format: a boring `key = value` text
+    /// file, because every build in the tree has to be able to read it.
     #[must_use]
     pub fn to_text(&self) -> String {
         let mut text = String::from(HEADER);
@@ -153,17 +169,15 @@ impl Record {
         text
     }
 
-    /// Parse a record.
-    ///
-    /// Unknown keys, comments and blank lines are ignored, and every optional
-    /// fact may be absent, so a record written by a newer build still reads.
+    /// Parse a record. Unknown keys and absent optional facts are tolerated, so
+    /// a record written by a newer build still reads.
     ///
     /// # Errors
     ///
-    /// [`MalformedRecord`] if a required key is missing or a numeric value
-    /// does not parse. Callers reading a claim file should treat any error as
-    /// "held by someone who did not identify themselves" rather than as a
-    /// failure: an unreadable record is exactly what an obsolete tenant leaves.
+    /// [`MalformedRecord`] if a required key is missing or a numeric value does
+    /// not parse. A reader should treat any error as "held by someone who did
+    /// not identify themselves": an unreadable record is exactly what an
+    /// obsolete tenant leaves.
     pub fn parse(text: &str) -> Result<Self, MalformedRecord> {
         let mut run = None;
         let mut compat = None;
@@ -218,9 +232,8 @@ fn number(value: &str, key: &'static str) -> Result<u64, MalformedRecord> {
 
 /// Why a claim record could not be read.
 ///
-/// Written out by hand rather than derived: this crate carries no
-/// dependencies, so that every process in a tree can depend on it without
-/// inheriting a build graph.
+/// Implemented by hand rather than derived: the core of this crate carries no
+/// dependencies, so that every process in a tree can link it freely.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum MalformedRecord {
     /// A key the record cannot do without is absent.
@@ -285,7 +298,7 @@ mod tests {
 
     #[test]
     fn a_reader_ignores_what_it_does_not_know() {
-        // The forward-compatibility rule: a newer tenant may write more.
+        // Forward compatibility: a newer tenant may write more.
         let text = format!("{}\nfuture_fact = 9\n", record().to_text());
         assert_eq!(Record::parse(&text).expect("must still parse"), record());
     }
@@ -344,5 +357,16 @@ mod tests {
 
         live.pid = 1;
         assert_eq!(recorded.tenant.compare(&live), Sameness::Different);
+    }
+
+    #[cfg(feature = "sysinfo")]
+    #[test]
+    fn this_process_can_be_looked_up_and_matches_itself() {
+        let looked_up = Tenant::look_up(std::process::id()).expect("this process must be visible");
+        assert!(
+            looked_up.started_at.is_some(),
+            "the lookup adds a start time"
+        );
+        assert_eq!(Tenant::current().compare(&looked_up), Sameness::Same);
     }
 }
