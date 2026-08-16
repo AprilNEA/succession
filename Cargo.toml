@@ -20,9 +20,9 @@ serde = ["dep:serde"]
 sysinfo = ["dep:sysinfo"]
 # Terminate a superseded tenant, refusing to signal a pid that no longer
 # belongs to the process the record describes.
-evict = ["sysinfo"]
+eviction = ["sysinfo"]
 # A supervision loop over the verdict: probe, spawn, wait, back off. std only.
-supervise = []
+supervision = []
 
 [dependencies]
 serde = { version = "1", features = ["derive"], optional = true }

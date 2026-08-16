@@ -33,8 +33,8 @@
 //! |---|---|---|
 //! | `serde` | Serialization for the identity types, for carrying [`Identity`] on an application's own wire | `serde` |
 //! | `sysinfo` | `Tenant::look_up`, so live process facts need not be supplied by hand | `sysinfo` |
-//! | `evict` | `evict`, which verifies a pid before signalling it and waits for the role to be released | `sysinfo` |
-//! | `supervise` | `Supervisor`, a probe/spawn/wait/back-off loop over the verdict | none |
+//! | `eviction` | `eviction::evict`, which verifies a pid before signalling it and waits for the role to be released | `sysinfo` |
+//! | `supervision` | `supervision::Supervisor`, a probe/spawn/wait/back-off loop over the verdict | none |
 //!
 //! Whole-process-tree containment and async supervision stay out of scope;
 //! [`processkit`](https://docs.rs/processkit) does those well.
@@ -105,22 +105,19 @@
 #[doc = include_str!("../README.md")]
 mod readme {}
 
-#[cfg(feature = "evict")]
-mod evict;
+#[cfg(feature = "eviction")]
+pub mod eviction;
+#[cfg(feature = "supervision")]
+pub mod supervision;
+
 mod identity;
 mod record;
 mod role;
 mod standing;
-#[cfg(feature = "supervise")]
-mod supervise;
 mod verdict;
 
-#[cfg(feature = "evict")]
-pub use evict::{Eviction, Outcome, Unconfirmed, evict};
 pub use identity::{Compat, Identity, Run};
 pub use record::{MalformedRecord, Record, Sameness, Tenant};
 pub use role::{ClaimError, Occupancy, Role, Tenancy};
 pub use standing::{Allegiance, Because, Standing};
-#[cfg(feature = "supervise")]
-pub use supervise::{Event, Restart, Supervisor};
 pub use verdict::{Verdict, verdict};

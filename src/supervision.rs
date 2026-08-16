@@ -57,7 +57,7 @@ pub enum Event<'a> {
     /// A tenant from a finished run is in the way.
     Superseded(&'a Record),
     /// Someone is in the way who never identified themselves.
-    Anonymous,
+    SupersededAnonymously,
     /// A helper was started.
     Started(u32),
     /// The helper exited after `ran_for`.
@@ -80,7 +80,9 @@ impl fmt::Display for Event<'_> {
         match self {
             Self::Occupied(occupancy) => write!(f, "role {occupancy}"),
             Self::Superseded(record) => write!(f, "role held by a finished run: {record}"),
-            Self::Anonymous => f.write_str("role held by a tenant that never identified itself"),
+            Self::SupersededAnonymously => {
+                f.write_str("role held by a tenant that never identified itself")
+            }
             Self::Started(pid) => write!(f, "helper started, pid {pid}"),
             Self::Exited { status, ran_for } => {
                 write!(f, "helper exited {status} after {ran_for:.1?}")
@@ -96,7 +98,7 @@ impl fmt::Display for Event<'_> {
 ///
 /// Eviction is deliberately not automatic — the [`Event::Superseded`] report
 /// hands the caller the record, together with everything needed to verify the
-/// pid before signalling it (see the `evict` feature).
+/// pid before signalling it (see the `eviction` feature).
 #[derive(Debug)]
 pub struct Supervisor {
     role: Role,
@@ -179,7 +181,7 @@ impl Supervisor {
                 thread::sleep(self.poll);
             }
             Verdict::EvictAnonymous => {
-                report(Event::Anonymous);
+                report(Event::SupersededAnonymously);
                 thread::sleep(self.poll);
             }
         }

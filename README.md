@@ -71,8 +71,8 @@ glue, so a process that only needs the decision pays for nothing else.
 |---|---|---|
 | `serde` | Serialization for the identity types, for carrying `Identity` on your own wire | `serde` |
 | `sysinfo` | `Tenant::look_up`, so live process facts need not be supplied by hand | `sysinfo` |
-| `evict` | `evict`, which verifies a pid against the record before signalling it, escalates on a deadline, and waits for the role to be released | `sysinfo` |
-| `supervise` | `Supervisor`, a probe/spawn/wait/back-off loop over the verdict, reporting events rather than logging them | none |
+| `eviction` | `eviction::evict`, which verifies a pid against the record before signalling it, escalates on a deadline, and waits for the role to be released | `sysinfo` |
+| `supervision` | `supervision::Supervisor`, a probe/spawn/wait/back-off loop over the verdict, reporting events rather than logging them | none |
 
 Whole-process-tree containment and async supervision stay out of scope;
 [`processkit`](https://docs.rs/processkit) does those well.

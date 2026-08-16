@@ -9,7 +9,7 @@ use crate::record::{Record, Sameness, Tenant};
 
 /// How hard to press a tenant that will not leave.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct Eviction {
+pub struct Policy {
     /// What to do when the record carries nothing but a pid, so the process
     /// cannot be confirmed. Refusing is the safe default: a pid can be reused.
     pub unconfirmed: Unconfirmed,
@@ -22,7 +22,7 @@ pub struct Eviction {
     pub poll: Duration,
 }
 
-impl Default for Eviction {
+impl Default for Policy {
     /// Refuse to act on an unconfirmed pid, kill after two seconds, give up
     /// after five.
     fn default() -> Self {
@@ -70,7 +70,7 @@ pub enum Outcome {
 /// Releasing the role is the point, so this waits for the process to actually
 /// disappear rather than assuming the signal landed.
 #[must_use]
-pub fn evict(record: &Record, policy: &Eviction) -> Outcome {
+pub fn evict(record: &Record, policy: &Policy) -> Outcome {
     let Some(live) = Tenant::look_up(record.tenant.pid) else {
         return Outcome::AlreadyGone;
     };
@@ -134,7 +134,7 @@ mod tests {
                 started_at: Some(1),
                 image: None,
             }),
-            &Eviction::default(),
+            &Policy::default(),
         );
         assert_eq!(outcome, Outcome::AlreadyGone);
     }
@@ -149,7 +149,7 @@ mod tests {
                 started_at: Some(1),
                 image: None,
             }),
-            &Eviction::default(),
+            &Policy::default(),
         );
         assert_eq!(outcome, Outcome::Refused(Sameness::Different));
     }
@@ -162,7 +162,7 @@ mod tests {
                 started_at: None,
                 image: None,
             }),
-            &Eviction::default(),
+            &Policy::default(),
         );
         assert_eq!(outcome, Outcome::Refused(Sameness::Inconclusive));
     }
