@@ -172,6 +172,16 @@ pub enum Occupancy {
     HeldAnonymously,
 }
 
+impl fmt::Display for Occupancy {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Free => f.write_str("free"),
+            Self::HeldBy(record) => write!(f, "held by {record}"),
+            Self::HeldAnonymously => f.write_str("held by an unidentified tenant"),
+        }
+    }
+}
+
 /// Why a role could not be taken.
 #[derive(Debug)]
 pub enum ClaimError {

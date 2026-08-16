@@ -136,6 +136,17 @@ pub struct Record {
     pub tenant: Tenant,
 }
 
+impl fmt::Display for Record {
+    /// One line, for a log: which run, which process, which image.
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "run {} pid {}", self.identity.run.get(), self.tenant.pid)?;
+        match self.tenant.image.as_deref().and_then(Path::to_str) {
+            Some(image) => write!(f, " ({image})"),
+            None => Ok(()),
+        }
+    }
+}
+
 /// Marker line, so a person — or a future parser — can tell what the file is.
 const HEADER: &str = "# succession 1";
 

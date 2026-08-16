@@ -1,5 +1,6 @@
 //! A loop over the verdict: probe the role, start the helper, wait, back off.
 
+use std::fmt;
 use std::io;
 use std::process::{Child, ExitStatus};
 use std::thread;
@@ -70,6 +71,24 @@ pub enum Event<'a> {
     SpawnFailed(&'a io::Error),
     /// Sleeping before the next attempt.
     BackingOff(Duration),
+}
+
+impl fmt::Display for Event<'_> {
+    /// A ready-made log line, so reporting costs one closure and no logging
+    /// dependency: `|event| tracing::info!("{event}")`.
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Occupied(occupancy) => write!(f, "role {occupancy}"),
+            Self::Superseded(record) => write!(f, "role held by a finished run: {record}"),
+            Self::Anonymous => f.write_str("role held by a tenant that never identified itself"),
+            Self::Started(pid) => write!(f, "helper started, pid {pid}"),
+            Self::Exited { status, ran_for } => {
+                write!(f, "helper exited {status} after {ran_for:.1?}")
+            }
+            Self::SpawnFailed(error) => write!(f, "helper could not be started: {error}"),
+            Self::BackingOff(delay) => write!(f, "waiting {delay:.1?} before the next attempt"),
+        }
+    }
 }
 
 /// Drives one role: waits while it is filled, starts a helper when it is free,
