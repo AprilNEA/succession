@@ -1,0 +1,36 @@
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+
+env:
+  CARGO_TERM_COLOR: always
+  RUSTFLAGS: "-D warnings"
+
+jobs:
+  check:
+    strategy:
+      fail-fast: false
+      matrix:
+        # File locking is the whole mechanism and each platform implements it
+        # differently (flock, LockFileEx), so every one of them runs the suite.
+        os: [macos-latest, ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+      - run: cargo fmt --check
+      - run: cargo clippy --all-targets
+      - run: cargo test
+
+  msrv:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      # File::try_lock landed in 1.89; the crate promises to build there.
+      - uses: dtolnay/rust-toolchain@1.89.0
+      - run: cargo check --all-targets

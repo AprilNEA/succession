@@ -1,0 +1,23 @@
+[package]
+name = "succession"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.89"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/AprilNEA/succession"
+authors = ["AprilNEA <dev@aprilnea.me>"]
+description = "Orderly succession for single-instance helper processes: an advisory lock plus an identity record binds a helper to one run of its owner, so one orphaned by a restart can be recognized and asked to leave."
+readme = "README.md"
+keywords = ["single-instance", "process", "lock", "orphan", "supervisor"]
+categories = ["os", "filesystem"]
+
+[dependencies]
+
+[lints.rust]
+missing_docs = "deny"
+unsafe_code = "forbid"
+
+[lints.clippy]
+pedantic = { level = "warn", priority = -1 }
+unwrap_used = "warn"
+expect_used = "warn"

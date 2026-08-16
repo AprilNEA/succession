@@ -1,0 +1,13 @@
+# macOS-only: force rustc to use Apple's real `/usr/bin/cc` as the linker
+# driver. Nix's wrapped clang (what a devenv/nix shell provides) ignores
+# `SDKROOT`, so link-time `-syslibroot` never points at the real SDK and core
+# libc symbols (`_write`, `_unlink`, `_waitpid`, ...) referenced from `libstd`
+# go unresolved.
+#
+# Harmless everywhere else: `/usr/bin/cc` is already what cargo would pick on a
+# stock macOS toolchain. This file only affects builds *of this repository* —
+# cargo reads config from the invocation directory upwards, never from a
+# dependency's source tree — so nothing is imposed on anyone depending on the
+# published crate.
+[target.'cfg(target_os = "macos")']
+linker = "/usr/bin/cc"
