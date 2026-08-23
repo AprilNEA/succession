@@ -56,7 +56,9 @@ match verdict(&role.occupancy()?, Run::mint(), Duration::ZERO, Duration::from_se
     Verdict::Start => { /* spawn the helper */ }
     Verdict::Wait => { /* look again shortly */ }
     Verdict::Evict(record) => { /* verify the pid, then ask it to leave */ }
-    Verdict::EvictAnonymous => { /* a tenant that never identified itself */ }
+    // A tenant that never identified itself: `eviction::evict_anonymous`
+    // recognizes it by the image this role's helper runs from.
+    Verdict::EvictAnonymous => {}
 }
 # Ok::<(), std::io::Error>(())
 ```

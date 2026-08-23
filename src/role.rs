@@ -134,9 +134,15 @@ impl Tenancy {
     ///
     /// # Errors
     ///
-    /// The underlying [`io::Error`]. Publication is advisory: a tenant that
-    /// cannot publish still holds the role, and callers are expected to log
-    /// the failure and carry on rather than give the role up.
+    /// The underlying [`io::Error`]. Publication is advisory in that a tenant
+    /// that cannot publish still holds the role — giving the role up over it
+    /// would leave the job undone by anyone.
+    ///
+    /// It is not advisory for succession, though: an unpublished tenant is
+    /// [`Occupancy::HeldAnonymously`] to every onlooker, and the next run can
+    /// only remove it by falling back on
+    /// [`eviction::evict_anonymous`](crate::eviction::evict_anonymous). Worth
+    /// logging loudly rather than in passing.
     pub fn publish(&self, record: &Record) -> io::Result<()> {
         let mut temporary = self.record.clone().into_os_string();
         temporary.push(format!(".{}.tmp", std::process::id()));
