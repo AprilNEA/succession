@@ -55,11 +55,12 @@ fn an_unclaimed_role_is_free() {
 }
 
 #[test]
-fn a_published_tenancy_identifies_itself() {
+fn taking_the_role_is_what_publishes_the_record() {
     let scratch = Scratch::new("published");
     let role = Role::new(scratch.path(), "helper");
-    let tenancy = role.claim().expect("a free role must be claimable");
-    tenancy.publish(&record(7)).expect("publishing");
+    let _tenancy = role
+        .claim(&record(7))
+        .expect("a free role must be claimable");
 
     match role.occupancy().unwrap() {
         Occupancy::HeldBy(seen) => assert_eq!(seen, record(7)),
@@ -68,18 +69,36 @@ fn a_published_tenancy_identifies_itself() {
 }
 
 #[test]
-fn a_tenancy_that_publishes_nothing_is_anonymous() {
-    let scratch = Scratch::new("anonymous");
+fn a_record_that_cannot_be_written_gives_the_role_straight_back() {
+    // A tenant nobody can identify holds the role while being unrecognizable
+    // to the next run, which is worse than no tenant at all: the role must
+    // come back free so an attempt that can identify itself gets its turn.
+    let scratch = Scratch::new("unpublishable");
     let role = Role::new(scratch.path(), "helper");
-    let _tenancy = role.claim().expect("a free role must be claimable");
-    assert_eq!(role.occupancy().unwrap(), Occupancy::HeldAnonymously);
+    fs::create_dir(role.record_path()).expect("a directory where the record belongs");
+
+    let error = role
+        .claim(&record(7))
+        .expect_err("a record that cannot be written must fail the claim");
+
+    assert!(
+        matches!(error, ClaimError::Unpublishable(_)),
+        "expected an unpublishable claim, got {error:?}"
+    );
+    assert_eq!(
+        role.occupancy().unwrap(),
+        Occupancy::Free,
+        "the lock must be released along with the failed claim"
+    );
 }
 
 #[test]
 fn an_unreadable_record_does_not_hide_the_tenant() {
     let scratch = Scratch::new("unreadable");
     let role = Role::new(scratch.path(), "helper");
-    let _tenancy = role.claim().expect("a free role must be claimable");
+    let _tenancy = role
+        .claim(&record(7))
+        .expect("a free role must be claimable");
     fs::write(role.record_path(), "this is not a claim record").expect("writing junk");
     // Garbage costs identification, never liveness: the tenant is still there.
     assert_eq!(role.occupancy().unwrap(), Occupancy::HeldAnonymously);
@@ -89,16 +108,19 @@ fn an_unreadable_record_does_not_hide_the_tenant() {
 fn a_held_role_cannot_be_claimed_again() {
     let scratch = Scratch::new("contested");
     let role = Role::new(scratch.path(), "helper");
-    let _tenancy = role.claim().expect("a free role must be claimable");
-    assert!(matches!(role.claim(), Err(ClaimError::Occupied)));
+    let _tenancy = role
+        .claim(&record(7))
+        .expect("a free role must be claimable");
+    assert!(matches!(role.claim(&record(9)), Err(ClaimError::Occupied)));
 }
 
 #[test]
 fn releasing_a_tenancy_frees_the_role() {
     let scratch = Scratch::new("released");
     let role = Role::new(scratch.path(), "helper");
-    let tenancy = role.claim().expect("a free role must be claimable");
-    tenancy.publish(&record(7)).expect("publishing");
+    let tenancy = role
+        .claim(&record(7))
+        .expect("a free role must be claimable");
     drop(tenancy);
 
     assert_eq!(role.occupancy().unwrap(), Occupancy::Free);
@@ -125,8 +147,9 @@ fn a_record_left_behind_by_a_dead_tenant_is_ignored() {
 fn republishing_replaces_the_record() {
     let scratch = Scratch::new("republished");
     let role = Role::new(scratch.path(), "helper");
-    let tenancy = role.claim().expect("a free role must be claimable");
-    tenancy.publish(&record(7)).expect("publishing");
+    let tenancy = role
+        .claim(&record(7))
+        .expect("a free role must be claimable");
     tenancy.publish(&record(9)).expect("republishing");
 
     match role.occupancy().unwrap() {

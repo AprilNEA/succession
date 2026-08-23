@@ -37,17 +37,29 @@ impl Role {
         }
     }
 
-    /// Take the role, creating the directory if needed.
+    /// Take the role and say who took it, creating the directory if needed.
     ///
-    /// Publish a [`Record`] immediately afterwards — until then the tenancy is
-    /// anonymous, and an onlooker can only tell that *someone* holds the role.
+    /// The record is written as part of taking the role, not after it, because
+    /// a tenant nobody can identify is worse than no tenant at all: it holds
+    /// the role while being unrecognizable to the next run, which can then
+    /// only fall back on
+    /// [`eviction::evict_anonymous`](crate::eviction::evict_anonymous). So a
+    /// record that cannot be written fails the claim and releases the lock —
+    /// leaving the role free for an attempt that can identify itself, which a
+    /// supervisor's back-off turns into a visible retry rather than silent
+    /// damage.
+    ///
+    /// Call [`Tenancy::publish`] later to correct the record if the facts
+    /// change.
     ///
     /// # Errors
     ///
     /// [`ClaimError::Occupied`] when another process holds the role, which is
     /// the ordinary "not me, then" answer rather than a fault;
-    /// [`ClaimError::Io`] when the lock file cannot be created or locked.
-    pub fn claim(&self) -> Result<Tenancy, ClaimError> {
+    /// [`ClaimError::Io`] when the lock file cannot be created or locked; and
+    /// [`ClaimError::Unpublishable`] when the role was taken but the record
+    /// could not be written, in which case it has already been given back.
+    pub fn claim(&self, record: &Record) -> Result<Tenancy, ClaimError> {
         if let Some(parent) = self.lock.parent() {
             fs::create_dir_all(parent)?;
         }
@@ -58,13 +70,18 @@ impl Role {
             .truncate(false)
             .open(&self.lock)?;
         match file.try_lock() {
-            Ok(()) => Ok(Tenancy {
-                _lock: file,
-                record: self.record.clone(),
-            }),
-            Err(fs::TryLockError::WouldBlock) => Err(ClaimError::Occupied),
-            Err(fs::TryLockError::Error(source)) => Err(ClaimError::Io(source)),
+            Ok(()) => {}
+            Err(fs::TryLockError::WouldBlock) => return Err(ClaimError::Occupied),
+            Err(fs::TryLockError::Error(source)) => return Err(ClaimError::Io(source)),
         }
+        // Dropping this on the way out closes the lock file, which is what
+        // gives the role back.
+        let tenancy = Tenancy {
+            _lock: file,
+            record: self.record.clone(),
+        };
+        tenancy.publish(record).map_err(ClaimError::Unpublishable)?;
+        Ok(tenancy)
     }
 
     /// Who holds the role right now.
@@ -126,23 +143,17 @@ pub struct Tenancy {
 }
 
 impl Tenancy {
-    /// Say who is holding the role.
+    /// Correct the record after the facts change.
     ///
+    /// The first record is written by [`Role::claim`]; this replaces it.
     /// Written to a temporary file and renamed into place, so a reader sees
     /// either the previous record or this one, never a half-written line.
-    /// Call it again to correct the record if the facts change.
     ///
     /// # Errors
     ///
-    /// The underlying [`io::Error`]. Publication is advisory in that a tenant
-    /// that cannot publish still holds the role — giving the role up over it
-    /// would leave the job undone by anyone.
-    ///
-    /// It is not advisory for succession, though: an unpublished tenant is
-    /// [`Occupancy::HeldAnonymously`] to every onlooker, and the next run can
-    /// only remove it by falling back on
-    /// [`eviction::evict_anonymous`](crate::eviction::evict_anonymous). Worth
-    /// logging loudly rather than in passing.
+    /// The underlying [`io::Error`]. A failure here leaves the *previous*
+    /// record in place, so the tenant stays identifiable — stale, but nothing
+    /// like anonymous. Losing a correction is worth logging and no more.
     pub fn publish(&self, record: &Record) -> io::Result<()> {
         let mut temporary = self.record.clone().into_os_string();
         temporary.push(format!(".{}.tmp", std::process::id()));
@@ -195,6 +206,9 @@ pub enum ClaimError {
     Occupied,
     /// The lock file could not be created, opened, or locked.
     Io(io::Error),
+    /// The role was taken and given straight back: its claim record could not
+    /// be written, and an unidentifiable tenant is not worth being.
+    Unpublishable(io::Error),
 }
 
 impl fmt::Display for ClaimError {
@@ -202,6 +216,9 @@ impl fmt::Display for ClaimError {
         match self {
             Self::Occupied => f.write_str("the role is already held"),
             Self::Io(_) => f.write_str("the role's lock file could not be taken"),
+            Self::Unpublishable(_) => {
+                f.write_str("the role was given back: its claim record could not be written")
+            }
         }
     }
 }
@@ -210,7 +227,7 @@ impl Error for ClaimError {
     fn source(&self) -> Option<&(dyn Error + 'static)> {
         match self {
             Self::Occupied => None,
-            Self::Io(source) => Some(source),
+            Self::Io(source) | Self::Unpublishable(source) => Some(source),
         }
     }
 }

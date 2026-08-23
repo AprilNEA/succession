@@ -157,6 +157,18 @@ impl Record {
         Self { identity, tenant }
     }
 
+    /// This process, serving a run of its own — the record for a role with no
+    /// owner to outlive, where the point is single instancing rather than
+    /// succession.
+    ///
+    /// A helper started by an owner wants [`Record::new`] instead, with the
+    /// run token that owner passed it: minting a fresh one here would make it
+    /// look like a tenant of a run nobody else knows about.
+    #[must_use]
+    pub fn mine(compat: Compat) -> Self {
+        Self::new(Identity::mine(compat), Tenant::current())
+    }
+
     /// Render the record in the on-disk format: a boring `key = value` text
     /// file, because every build in the tree has to be able to read it.
     #[must_use]
