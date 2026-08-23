@@ -33,7 +33,7 @@
 //! |---|---|---|
 //! | `serde` | Serialization for the identity types, for carrying [`Identity`] on an application's own wire | `serde` |
 //! | `sysinfo` | `Tenant::look_up`, so live process facts need not be supplied by hand | `sysinfo` |
-//! | `eviction` | `eviction::evict`, which verifies a pid before signalling it and waits for the role to be released | `sysinfo` |
+//! | `eviction` | `eviction::evict`, which verifies a pid before signalling it and waits for the role to be released, and `eviction::evict_anonymous` for a tenant that published no record | `sysinfo` |
 //! | `supervision` | `supervision::Supervisor`, a probe/spawn/wait/back-off loop over the verdict | none |
 //!
 //! Whole-process-tree containment and async supervision stay out of scope;
@@ -91,7 +91,9 @@
 //!     Verdict::Wait => std::thread::sleep(Duration::from_millis(500)),
 //!     // Verify the pid is still that process before signalling it.
 //!     Verdict::Evict(record) => ask_to_leave(record.tenant.pid),
-//!     Verdict::EvictAnonymous => { /* fall back on what you know out of band */ }
+//!     // No record to verify against: `eviction::evict_anonymous` finds the
+//!     // tenant by the image this role's helper runs from.
+//!     Verdict::EvictAnonymous => {}
 //! }
 //! # Ok(())
 //! # }

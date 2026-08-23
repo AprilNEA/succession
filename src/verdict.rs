@@ -23,9 +23,14 @@ pub enum Verdict {
     /// reused.
     Evict(Record),
     /// Someone holds the role, published nothing readable, and has had long
-    /// enough to leave politely. Nothing can be verified about it, so an
-    /// evictor has to fall back on whatever it knows out of band — the
-    /// expected image name, say — and should prefer a polite signal.
+    /// enough to leave politely. Nothing about the tenant can be verified, so
+    /// an evictor has to fall back on what it knows out of band: the image it
+    /// starts this role's helper from. That is what
+    /// [`eviction::evict_anonymous`](crate::eviction::evict_anonymous) does.
+    ///
+    /// Leaving this verdict unhandled wedges the role for as long as that
+    /// process lives — the supervisor will keep reaching this arm, tick after
+    /// tick, and the helper will never start.
     EvictAnonymous,
 }
 
