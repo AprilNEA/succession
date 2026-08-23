@@ -25,8 +25,9 @@ let me = Identity::mine(PROTOCOL);
 // Answer `me` over IPC, and pass `me.run.get()` to the helper at spawn.
 ```
 
-The helper takes the role, says who it is, and re-checks its owner on every
-handshake:
+The helper takes the role — saying who it is in the same breath, because a
+tenant nobody can identify is worse than none — and re-checks its owner on
+every handshake:
 
 ```rust,no_run
 use succession::{Allegiance, Identity, Record, Role, Standing, Tenant};
@@ -35,8 +36,8 @@ use succession::{Allegiance, Identity, Record, Role, Standing, Tenant};
 # let spawned_by = Run::from_raw(1);
 # fn owner_identity() -> Identity { Identity::mine(Compat::from_raw(18)) }
 let role = Role::new("/run/my-app", "overlay");
-let tenancy = role.claim()?;                       // Occupied => someone else is the overlay
-tenancy.publish(&Record::new(Identity::new(spawned_by, PROTOCOL), Tenant::current()))?;
+let record = Record::new(Identity::new(spawned_by, PROTOCOL), Tenant::current());
+let tenancy = role.claim(&record)?;                // Occupied => someone else is the overlay
 
 if let Standing::Superseded(because) = Allegiance::to(PROTOCOL, spawned_by).observe(owner_identity())
 {

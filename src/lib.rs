@@ -24,6 +24,13 @@
 //!    keys, so a record from a newer build still reads, and an unreadable one
 //!    degrades to [`Occupancy::HeldAnonymously`] rather than to an error.
 //!
+//! Anonymity is the state both contracts exist to avoid, because a tenant
+//! nobody can identify cannot be reasoned with — only
+//! [`eviction::evict_anonymous`] can remove it, and only by recognizing the
+//! image it runs. [`Role::claim`] therefore writes the record itself and hands
+//! the role back if it cannot, so the state is reached by inheritance from
+//! older installs rather than manufactured anew.
+//!
 //! # Features
 //!
 //! The core is dependency-free and decides only: it never spawns, signals,
@@ -53,16 +60,13 @@
 //! let spawned_by = Run::from_raw(std::env::var("MY_APP_RUN")?.parse()?);
 //!
 //! let role = Role::new("/run/my-app", "overlay");
-//! let tenancy = match role.claim() {
+//! let record = Record::new(Identity::new(spawned_by, PROTOCOL), Tenant::current());
+//! let _tenancy = match role.claim(&record) {
 //!     Ok(tenancy) => tenancy,
 //!     // Someone is already the overlay. Our supervisor will deal with it.
 //!     Err(ClaimError::Occupied) => return Ok(()),
 //!     Err(error) => return Err(error.into()),
 //! };
-//! let _ = tenancy.publish(&Record::new(
-//!     Identity::new(spawned_by, PROTOCOL),
-//!     Tenant::current(),
-//! ));
 //!
 //! let allegiance = Allegiance::to(PROTOCOL, spawned_by);
 //! if let Standing::Superseded(because) = allegiance.observe(owner_identity()) {
